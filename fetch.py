@@ -187,7 +187,7 @@ def build_frames(key, t_end=None, progress=None, raws=None):
     todo = [j for j in jobs if j not in raws]
     done = total - len(todo)
     if progress and done:
-        progress(done, total, "받아둔 자료 재사용")
+        progress(done, total, "위성 자료 수집 중")
 
     if todo:
         from concurrent.futures import ThreadPoolExecutor, as_completed
