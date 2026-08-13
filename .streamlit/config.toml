@@ -1,0 +1,14 @@
+[theme]
+# design_handoff_rain30 토큰. CSS 로도 칠하지만, Streamlit 기본 위젯
+# (expander, code 블록 등)까지 맞추려면 여기가 있어야 한다.
+base = "light"
+backgroundColor = "#eaf4ff"
+secondaryBackgroundColor = "#ffffff"
+primaryColor = "#12324d"
+textColor = "#12324d"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

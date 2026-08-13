@@ -1,0 +1,21 @@
+# Streamlit Community Cloud 배포용 (RAM 1GB — 무거운 건 다 뺐다)
+#
+# ★ 1단계 껍데기인데도 무거운 것들을 미리 다 넣었다.
+#   이 단계의 목적이 화면이 아니라 **빌드 통과 증명**이기 때문이다.
+#   모델을 다 얹은 뒤에 netCDF4 휠이 안 깔린다는 걸 알게 되는 게 최악이다.
+#
+# torch 없음: 추론은 onnxruntime 로만 한다 (torch 는 800MB 넘어 RAM 한도를 넘긴다).
+# xarray/cartopy 없음: .nc 는 netCDF4 로 직접 읽고 지도는 folium 이 그린다.
+
+streamlit>=1.40
+numpy>=1.26,<3
+onnxruntime>=1.18            # U-Net 3개 추론
+lightgbm>=4.3                # 구간 분류기 4개
+netCDF4>=1.6                 # APIhub 실시간 GK2A .nc 파싱
+opencv-python-headless>=4.9  # ★ 특징 조립의 multiscale(erode/dilate/blur)·slope_fields
+pyproj>=3.6                  # LCC <-> 위경도 (클릭 좌표 -> 격자 화소)
+requests>=2.31
+folium>=0.17
+streamlit-folium>=0.23
+branca>=0.7                  # folium 컬러맵
+Pillow>=10.0                 # 예측 격자 -> PNG 오버레이

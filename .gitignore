@@ -1,0 +1,13 @@
+# ★ 인증키는 절대 커밋하지 않는다. Streamlit Cloud 는 secrets 로 넣는다.
+.streamlit/secrets.toml
+.kmaapirc
+
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+
+# 디자인 검토용으로 만든 것들 — 배포에 필요 없다
+anim_preview.html
+cloud_colors.html
+overlay_check.png
