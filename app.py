@@ -58,6 +58,7 @@ CSS = """
   --bg:#eaf4ff; --ink:#12324d; --ink2:#37536b; --sub:#5c7f9b; --muted:#8aa8c2;
   --surface:#ffffff; --accent:#ffe58a; --accent2:#ffd34d; --blue:#8ec6f2;
   --panel:#dbe9f6; --line:rgba(18,50,77,.14); --line2:rgba(18,50,77,.2);
+  --edge:rgba(18,50,77,.28);   /* 입력·버튼 테두리 — 잉크 대신 흐리게 */
   --mono:ui-monospace,Menlo,"SFMono-Regular",Consolas,monospace;
 }
 html,body,.stApp{background:var(--bg)!important;
@@ -69,6 +70,7 @@ html,body,.stApp{background:var(--bg)!important;
    클래스 선택자를 이겨서 헤드라인이 24 -> 16px 로 눌린다. */
 .eyebrow{font-family:var(--mono);font-size:11px!important;letter-spacing:2px;
          color:var(--muted);margin:0 0 6px;}
+.eyebrow.recent-h{margin-top:24px;}
 h1.title{font-size:30px!important;line-height:1.24;font-weight:800;
          letter-spacing:-1.4px;color:var(--ink);margin:0 0 14px;}
 .rule{height:1px;background:var(--ink);opacity:.14;margin:14px 0;}
@@ -97,9 +99,11 @@ h1.title{font-size:30px!important;line-height:1.24;font-weight:800;
 .badge{display:inline-block;background:var(--accent2);color:var(--ink);
        border-radius:999px;padding:6px 12px;font-size:12px;font-weight:800;
        margin:0 0 10px;}
-.stub{background:var(--surface);border:1px dashed var(--line2);border-radius:4px;
+.stub{background:var(--surface);border:1px dashed var(--line2);border-radius:10px;
       padding:10px 12px;font-family:var(--mono);font-size:10.5px!important;
       color:var(--muted);margin:16px 0 0;line-height:1.7;}
+/* 지도(st_folium iframe)도 각을 죽인다 — 시안 패널 radius 6px 보다 조금 더 둥글게 */
+iframe[title="streamlit_folium.st_folium"]{border-radius:12px;overflow:hidden;}
 
 /* 지도 범례 — ★ 한 줄에 다 넣으면 모바일 폭에서 '강한 비'만 다음 줄로 떨어져
    어긋나 보인다. 설명 한 줄 / 색 칩 한 줄로 **일부러** 두 줄로 나눈다.
@@ -111,21 +115,63 @@ h1.title{font-size:30px!important;line-height:1.24;font-weight:800;
 .legend i{width:9px;height:9px;border-radius:2px;display:inline-block;
           margin-right:4px;vertical-align:-1px;}
 
-div.stButton>button{width:100%;height:46px;border-radius:4px;
-  border:2px solid var(--ink);background:var(--surface);color:var(--ink);
-  font-weight:700;font-size:14px;}
+/* 시안은 52px/2px/radius 4px 인데 지역 목록처럼 여러 개가 세로로 쌓이면 너무
+   무겁고 각져 보인다. 40px/1px/radius 10px 로 낮추고 글자도 한 단계 줄인다. */
+div.stButton>button{width:100%;height:40px;border-radius:10px;
+  border:1px solid var(--edge);background:var(--surface);color:var(--ink);
+  font-weight:600;font-size:13.5px;}
 /* 호버는 노란빛 대신 옅은 회색 — 노랑은 '선택됨'을 뜻하는 색이라 마우스만
-   올려도 노래지면 이미 고른 것처럼 읽힌다. */
+   올려도 노래지면 이미 고른 것처럼 읽힌다. 테두리는 평소 흐리고 만졌을 때만 진해진다. */
 div.stButton>button:hover{background:#eef2f7;
-  border-color:var(--ink);color:var(--ink);}
+  border-color:rgba(18,50,77,.45);color:var(--ink);}
 div.stButton>button:active{background:#e4eaf1;}
+
+/* 검색 결과는 상자가 아니라 **리스트**로 (시안의 '결과 행': padding 13px 2px,
+   아래쪽 구분선 1px). Streamlit 이 위젯 key 를 컨테이너 클래스 st-key-<key> 로
+   붙여주므로 검색 결과 버튼(key="h0","h1"...)만 골라 다르게 입힌다. */
+/* ★ 행 사이 16px(부모 flex gap)을 음수 마진으로 지운다 — 안 지우면 흰 배경이
+   낱개 막대로 끊겨 리스트로 안 읽힌다. */
+div[class*="st-key-h"]{margin-bottom:-16px!important;}
+div[class*="st-key-h"] .stButton>button{
+  height:auto!important;min-height:0!important;border:none!important;
+  border-bottom:1px solid var(--line)!important;border-radius:0!important;
+  background:rgba(255,255,255,.72)!important;padding:8px 14px!important;
+  text-align:left!important;justify-content:flex-start!important;
+  font-weight:600!important;font-size:13.5px!important;}
+/* ★ 버튼에만 justify-content:flex-start 를 줘도 소용없다 — 안쪽 래퍼 두 겹
+   (div > span)이 각각 justify-content:center 라 거기서 다시 가운데로 모은다.
+   실제로 글자가 왼쪽에서 69px 떨어져 있었다. 래퍼까지 풀어줘야 한다. */
+div[class*="st-key-h"] .stButton>button>div,
+div[class*="st-key-h"] .stButton>button>div>span{
+  justify-content:flex-start!important;width:100%!important;}
+div[class*="st-key-h"] .stButton>button *{text-align:left!important;}
+div[class*="st-key-h"] .stButton>button:hover{background:#f3f7fb!important;}
+
+/* '최근' 은 한 줄에 둘씩. ★ Streamlit 은 좁은 폭에서 st.columns 를 세로로 풀어버려
+   모바일에서 한 줄에 하나가 된다 — 강제로 나란히 둔다. */
+@media (max-width:640px){
+  div[data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;}
+  div[data-testid="stColumn"]{flex:1 1 0%!important;width:auto!important;
+    min-width:0!important;}
+}
+/* 폭이 절반이라 지역명이 넘친다 — 글자를 줄이고 넘치면 말줄임 */
+div[class*="st-key-r"] .stButton>button{font-size:12px!important;padding:0 8px!important;}
+div[class*="st-key-r"] .stButton>button p{overflow:hidden!important;
+  text-overflow:ellipsis!important;white-space:nowrap!important;}
+/* 리스트 블록의 위아래 모서리만 둥글게 */
+div[class*="st-key-h0"] .stButton>button{border-radius:10px 10px 0 0!important;}
 div.stButton>button[kind="primary"]{background:var(--ink);color:var(--bg);}
 
-div[data-testid="stTextInput"] input{height:52px;background:var(--surface);
-  border-radius:4px;font-size:15px!important;font-weight:600;color:var(--ink);
+div[data-testid="stTextInput"] input{height:46px;background:var(--surface);
+  border-radius:10px;font-size:15px!important;font-weight:600;color:var(--ink);
   padding:0 14px;}
-div[data-testid="stTextInput"] div[data-baseweb="input"]{
-  border:2px solid var(--ink)!important;border-radius:4px;background:var(--surface);}
+/* ★ 이 Streamlit 버전엔 [data-baseweb="input"] 래퍼가 없다 — 그걸로 잡으면
+   조용히 안 먹고 기본 회색 테두리가 남는다. input 을 감싼 div 를 :has 로 잡는다. */
+div[data-testid="stTextInput"] div:has(> input){
+  border:1px solid var(--edge)!important;border-radius:10px!important;
+  background:var(--surface)!important;}
+div[data-testid="stTextInput"] div:has(> input):focus-within{
+  border-color:var(--ink)!important;}
 div[data-testid="stTextInput"] input::placeholder{color:var(--muted);font-weight:500;}
 
 /* ---------- 로딩: 구름이 아래에서 차오른다 ---------- */
@@ -288,11 +334,13 @@ def home():
                         unsafe_allow_html=True)
         for i, h in enumerate(hits):
             label = h["name"] + (f'  ·  {h["detail"]}' if h["detail"] else "")
-            if st.button(label, key=f"h{i}"):
+            if st.button(label, key=f"h{i}", width="stretch"):
                 go_result(h["name"], h["lat"], h["lon"])
                 st.rerun()
 
-    st.markdown('<p class="eyebrow">최근</p>', unsafe_allow_html=True)
+    # ★ 검색 결과 행에 margin-bottom:-16px 를 줬으므로 그 뒤에 오는 이 라벨이
+    #   위로 딸려 올라온다. 여기서 되돌려 준다.
+    st.markdown('<p class="eyebrow recent-h">최근</p>', unsafe_allow_html=True)
     cols = st.columns(2)
     for i, (nm, la, lo) in enumerate(st.session_state.recent):
         if cols[i % 2].button(nm, key=f"r{i}", width="stretch"):
@@ -324,7 +372,7 @@ def result():
 
     slot = st.empty()
     # 탐색 구간 — 아직 받은 게 없어 0%. 깜빡임으로만 진행 중임을 알린다.
-    slot.markdown(cloud_loader(0.0, "위성 자료 찾는 중", searching=True),
+    slot.markdown(cloud_loader(0.0, "위성 자료 수집 중", searching=True),
                   unsafe_allow_html=True)
 
     def prog(n, tot, lab):

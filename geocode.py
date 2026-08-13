@@ -100,9 +100,12 @@ def search(query, key=None, size=8):
         name = a.get("region_3depth_name") or d.get("address_name", query)
         add(name, d.get("address_name", ""), d["x"], d["y"])
 
-    for d in _get(KEYWORD_URL, key, dict(query=query, size=size)):
-        add(d.get("place_name", query),
-            d.get("road_address_name") or d.get("address_name", ""),
-            d["x"], d["y"])
-
+    # ★ 키워드 검색(장소)은 쓰지 않는다. "성수동" 을 치면 카페거리·전망대·곤충식물원
+    #   같은 POI 가 10건 중 8건을 채워서 정작 동네가 묻힌다. 이 앱이 답하는 건
+    #   '이 지역에 비가 오나' 이지 '이 가게가 어디냐' 가 아니다.
+    #   되살리려면 아래를 풀면 된다:
+    #     for d in _get(KEYWORD_URL, key, dict(query=query, size=size)):
+    #         add(d.get("place_name", query),
+    #             d.get("road_address_name") or d.get("address_name", ""),
+    #             d["x"], d["y"])
     return out

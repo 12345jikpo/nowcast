@@ -198,7 +198,9 @@ def build_frames(key, t_end=None, progress=None, raws=None):
                 raws[(ch, t)] = f.result()
                 done += 1
                 if progress:
-                    progress(done, total, f"{ch} {t:%H:%M}UTC")
+                    # 채널명만. UTC 시각은 화면의 다른 시각 표기(KST)와 9시간 어긋나
+                    # 보여 혼동을 준다.
+                    progress(done, total, ch)
 
     got = {ch: [] for ch in CHANNELS}
     for t in times:                                # ★ 파싱은 직렬
