@@ -377,8 +377,36 @@ def result():
 
 def _map(lat, lon, name, r):
     """시안의 '레이더/위성 영상' 패널 — 지도 + 예측 구름 + 강수 구간."""
-    m = folium.Map(location=[lat, lon], zoom_start=8, tiles="CartoDB positron",
+    # ★ 출처 표시는 **지울 수 없다** — OSM 데이터가 ODbL 이라 라이선스 요구사항이다.
+    #   대신 (1) Leaflet 크레딧은 뺀다(BSD 라 표시 의무 없음) (2) "contributors" 를
+    #   줄여 한 줄로 만든다 (3) 파란 링크색을 뮤트 톤으로 낮춘다.
+    #   'OpenStreetMap' 이라는 이름 자체는 남긴다 — 여기까지가 지켜야 할 선이다.
+    m = folium.Map(location=[lat, lon], zoom_start=8, tiles=None,
                    control_scale=False, zoom_control=True)
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        # ★ 전체를 span 으로 감싼다 — 아래 CSS 가 '컨테이너 폰트 0 / 이 span 만 9px'
+        #   로 Leaflet 이 끼워넣는 구분자 ' | '(맨 텍스트 노드)를 지우는 데 쓴다.
+        attr='<span class="cred">© <a href="https://www.openstreetmap.org/copyright">'
+             'OpenStreetMap</a> · CARTO</span>',
+        name="basemap", control=False, max_zoom=19).add_to(m)
+    # ★ 여기는 **CSS 로만** 해결해야 한다. st_folium 은 지도 HTML 을 innerHTML 로
+    #   주입하는데, innerHTML 로 넣은 <script> 는 **실행되지 않는다**. 그래서
+    #   attributionControl.setPrefix() 도, DOM 을 고치는 스크립트도 전부 조용히 죽는다.
+    #   (HTML 안에는 멀쩡히 들어있어서 넣은 줄 알기 쉽다 — 실제로 두 번 속았다)
+    #
+    #   Leaflet 크레딧은 표시 의무가 없어 숨기고, 그때 남는 구분자 ' | ' 는
+    #   **맨 텍스트 노드**라 선택자로 못 잡는다. 그래서 컨테이너 폰트를 0 으로 죽이고
+    #   우리가 감싼 .cred 만 되살린다. OSM/CARTO 표기는 그대로 남는다(ODbL 요구).
+    m.get_root().header.add_child(folium.Element(
+        "<style>"
+        ".leaflet-control-attribution{font-size:0!important;line-height:1.3;"
+        "background:rgba(255,255,255,.72)!important;padding:1px 5px!important;}"
+        ".leaflet-control-attribution>a,.leaflet-attribution-flag{display:none!important;}"
+        ".leaflet-control-attribution .cred{font-size:9px!important;color:#8aa8c2!important;}"
+        ".leaflet-control-attribution .cred a{color:#8aa8c2!important;"
+        "text-decoration:none!important;}"
+        "</style>"))
 
     if r["grid"] is not None:
         import overlay

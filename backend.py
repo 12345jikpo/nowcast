@@ -61,10 +61,12 @@ def _latest_obs():
         if not k:
             raise fetch.FetchError("기상청 API 허브 인증키가 없습니다 "
                                    "(secrets 의 KMA_API_KEY).")
-        t_end, lag = fetch.latest_common_time(k)
+        t_end, lag, raws = fetch.latest_common_time(k)
         if t_end is None:
             raise fetch.FetchError("3시간 안에 3채널이 다 갖춰진 시각이 없습니다.")
-        return t_end, lag
+        # ★ 탐색하며 받은 .nc(3장, 약 2.4MB)를 같이 들고 온다 — 버리면 수집 단계에서
+        #   똑같은 걸 또 받는다(약 3.5초 낭비).
+        return t_end, lag, raws
     # ttl 만으로도 되지만, 버킷을 키에 넣어야 2분 경계에서 확실히 새로 훑는다.
     return _probe(int(dt.datetime.now(dt.timezone.utc).timestamp()) // 120)
 
@@ -74,7 +76,7 @@ _GRID_LOCK = threading.Lock()
 _KEEP = 3                              # 최근 관측 시각 3개만 들고 있는다
 
 
-def _grid(t_end, progress=None):
+def _grid(t_end, progress=None, raws=None):
     """관측 시각 하나의 전 도메인 예측. 무거운 부분(12장 수집 + 추론)의 캐시 지점.
 
     ★ 여기에 `@st.cache_data` 를 쓰면 안 된다. 진행률 콜백이 함수 **안에서**
@@ -96,7 +98,8 @@ def _grid(t_end, progress=None):
         import fetch
         from inference import STEP_S
         k = fetch.load_key()
-        irs, wvs, sws, times, _ = fetch.build_frames(k, t_end, progress=progress)
+        irs, wvs, sws, times, _ = fetch.build_frames(k, t_end, progress=progress,
+                                                     raws=raws)
         valid = t_end + dt.timedelta(seconds=STEP_S)
         out = _predictor().predict_grid(irs, wvs, sws, int(valid.timestamp()))
         out["valid_at"] = valid.astimezone(KST)
@@ -109,8 +112,8 @@ def _grid(t_end, progress=None):
 
 def predict(lat, lon, progress=None):
     """한 지점의 예측 + 표출용 격자. 격자는 캐시에서 공유된다."""
-    t_end, lag = _latest_obs()
-    g = _grid(t_end, progress=progress)
+    t_end, lag, raws = _latest_obs()
+    g = _grid(t_end, progress=progress, raws=raws)
     g = dict(g)
     g["lag_min"] = lag
     # ★ 리드타임은 '대상 시각 − 지금'이다. "30분 뒤"가 아니다 —

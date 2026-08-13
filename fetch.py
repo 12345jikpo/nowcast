@@ -126,52 +126,89 @@ def nc_to_bt(raw, ch):
 
 
 def latest_common_time(key, back_minutes=180):
-    """3채널이 **모두** 있는 가장 최신 관측시각(UTC)과 지연(분).
+    """3채널이 **모두** 있는 가장 최신 관측시각(UTC)과 지연(분), 그리고 **받아둔 바이트**.
 
-    IR105 로 먼저 훑고, 걸린 시각에서 나머지 둘을 확인한다. 매 후보마다 3채널을
-    다 때리면 요청이 3배가 된다 — 지연이 8분이라 보통 1~2번 만에 걸린다.
+    반환 (t_end, lag, raws) — raws 는 {(ch, t): bytes}.
+
+    ★ 받은 걸 돌려주는 게 핵심이다. 탐색은 존재 확인이지만 API 에 HEAD 가 없어
+      .nc 를 통째로 받게 되는데, 예전엔 그걸 버리고 수집 단계에서 **또 받았다**.
+      12장이 아니라 15장을 받고 있었던 셈이다(약 3.5초 낭비).
     """
     now = dt.datetime.now(UTC).replace(second=0, microsecond=0)
     t = now - dt.timedelta(minutes=now.minute % 10)
     for _ in range(back_minutes // 10):
-        if fetch_raw("IR105", t, key) is not None:
-            if all(fetch_raw(ch, t, key) is not None for ch in ("WV063", "SW038")):
-                return t, (now - t).total_seconds() / 60.0
+        raw = fetch_raw("IR105", t, key)
+        if raw is not None:
+            raws = {("IR105", t): raw}
+            ok = True
+            for ch in ("WV063", "SW038"):
+                r = fetch_raw(ch, t, key)
+                if r is None:
+                    ok = False
+                    break
+                raws[(ch, t)] = r
+            if ok:
+                return t, (now - t).total_seconds() / 60.0, raws
         t -= SCAN_STEP
-    return None, None
+    return None, None, {}
 
 
-def build_frames(key, t_end=None, progress=None):
+WORKERS = 4          # 동시 다운로드 수. 올리면 429 가 늘고 이득은 완만해진다.
+
+
+def build_frames(key, t_end=None, progress=None, raws=None):
     """모델 입력 3채널 x 4프레임.
 
     반환 (irs, wvs, sws, times, lag) — 각 (4,256,256) 밝기온도(K), 과거->현재.
     한 장이라도 결측이면 FetchError.
 
-    progress : 선택. progress(done, total, label) 로 불린다 (Streamlit 진행바용).
+    raws     : {(ch, t): bytes} 이미 받아둔 것 (latest_common_time 이 돌려준 것).
+    progress : progress(done, total, label) — Streamlit 진행 표시용.
+
+    ★ **다운로드만 병렬, 파싱은 직렬.** netCDF4/HDF5 는 스레드 안전하지 않다 —
+      여러 스레드에서 nc.Dataset() 을 동시에 부르면 SIGSEGV 로 죽고 로그도 안 남는다.
+      12장이 장당 1.2초씩 걸리는 건 대부분 서버 응답 대기라 그 대기만 겹치면 되고,
+      파싱은 장당 25ms 라 직렬로 해도 0.3초다.
+    ★ progress 는 **메인 스레드에서만** 부른다. 워커 스레드에서 st 요소를 건드리면
+      스크립트 실행 컨텍스트가 없어 경고만 뜨고 아무것도 안 그려진다.
     """
+    lag = None
+    raws = dict(raws or {})
     if t_end is None:
-        t_end, lag = latest_common_time(key)
+        t_end, lag, found = latest_common_time(key)
         if t_end is None:
             raise FetchError("3시간 안에 3채널이 다 갖춰진 시각이 없습니다.")
-    else:
-        lag = None
+        raws.update(found)
 
     times = [t_end - dt.timedelta(seconds=STEP_S * k)
              for k in range(IN_FRAMES - 1, -1, -1)]
-    total = len(times) * len(CHANNELS)
+    jobs = [(ch, t) for t in times for ch in CHANNELS]
+    total = len(jobs)
+    todo = [j for j in jobs if j not in raws]
+    done = total - len(todo)
+    if progress and done:
+        progress(done, total, "받아둔 자료 재사용")
+
+    if todo:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            futs = {ex.submit(fetch_raw, ch, t, key): (ch, t) for ch, t in todo}
+            for f in as_completed(futs):          # 메인 스레드
+                ch, t = futs[f]
+                raws[(ch, t)] = f.result()
+                done += 1
+                if progress:
+                    progress(done, total, f"{ch} {t:%H:%M}UTC")
+
     got = {ch: [] for ch in CHANNELS}
-    n = 0
-    for t in times:
+    for t in times:                                # ★ 파싱은 직렬
         for ch in CHANNELS:
-            raw = fetch_raw(ch, t, key)
+            raw = raws.get((ch, t))
             if raw is None:
                 raise FetchError(
                     f"{ch} {t:%m-%d %H:%M}UTC 결측 — 이 시각은 예측할 수 없습니다. "
                     "(결측을 이전 프레임으로 채우면 모델이 '구름이 멈췄다'고 읽습니다)")
             got[ch].append(nc_to_bt(raw, ch))
-            n += 1
-            if progress:
-                progress(n, total, f"{ch} {t:%H:%M}UTC")
     return (np.stack(got["IR105"]), np.stack(got["WV063"]),
             np.stack(got["SW038"]), times, lag)
 
@@ -185,16 +222,17 @@ if __name__ == "__main__":
 
     print("[1] 3채널 공통 최신 시각 탐색")
     t0 = time.time()
-    t_end, lag = latest_common_time(key)
+    t_end, lag, raws = latest_common_time(key)
     if t_end is None:
         raise SystemExit("★ 3시간 안에 자료가 없다")
     print(f"  {t_end:%Y-%m-%d %H:%M} UTC = {t_end.astimezone(KST):%H:%M} KST"
-          f"   지연 {lag:.0f}분   (탐색 {time.time()-t0:.1f}초)")
+          f"   지연 {lag:.0f}분   (탐색 {time.time()-t0:.1f}초, 받아둔 {len(raws)}장)")
 
-    print(f"\n[2] 30분 간격 {IN_FRAMES}장 x 3채널 = 12장 수집")
+    print(f"\n[2] 30분 간격 {IN_FRAMES}장 x 3채널 = 12장 수집 (병렬 {WORKERS})")
     t0 = time.time()
     irs, wvs, sws, times, _ = build_frames(
-        key, t_end, progress=lambda n, tot, lab: print(f"  {n:2d}/{tot} {lab}", flush=True))
+        key, t_end, raws=raws,
+        progress=lambda n, tot, lab: print(f"  {n:2d}/{tot} {lab}", flush=True))
     t_fetch = time.time() - t0
     print(f"  수집 {t_fetch:.1f}초")
     for nm, a in (("IR105", irs), ("WV063", wvs), ("SW038", sws)):
