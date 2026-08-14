@@ -10,4 +10,6 @@ __pycache__/
 # 디자인 검토용으로 만든 것들 — 배포에 필요 없다
 anim_preview.html
 cloud_colors.html
+loader_options.html
+loader_speed.html
 overlay_check.png

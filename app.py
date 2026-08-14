@@ -15,7 +15,7 @@ import folium
 from streamlit_folium import st_folium
 
 import geocode
-from levels import LEVELS
+from levels import LEVELS, SUB_NEAR_RAIN
 from backend import predict_point, in_domain, LAT_MIN, LAT_MAX, LON_MIN, LON_MAX, KST
 
 st.set_page_config(page_title="30분 뒤에 비가 올까?", page_icon="🌧",
@@ -177,13 +177,13 @@ div[data-testid="stTextInput"] input::placeholder{color:var(--muted);font-weight
 /* ---------- 로딩: 구름이 아래에서 차오른다 ---------- */
 .loadwrap{display:flex;flex-direction:column;align-items:center;gap:10px;
           padding:26px 0 18px;}
-.loadwrap svg{width:120px;height:82px;}
+.loadwrap svg{width:120px;height:82px;
+              animation:cloudpulse 1.9s ease-in-out infinite;}
 .loadlab{font-family:var(--mono);font-size:11px!important;color:var(--muted);
          margin:0;letter-spacing:.5px;}
-/* 탐색 구간(약 3.5초)은 받은 게 없어 게이지가 0% 에 멈춰 있다.
-   진행률을 거짓으로 채우는 대신 구름만 은은히 숨쉬게 해 '살아있음'을 알린다. */
-.loadwrap.searching svg{animation:cloudpulse 1.4s ease-in-out infinite;}
-@keyframes cloudpulse{0%,100%{opacity:1;}50%{opacity:.42;}}
+/* ★ 구름 색이 #dbe9f6 이면 배경 #eaf4ff 와 거의 같아 불투명도를 흔들어도 안 보인다
+   (옅어질 배경이 이미 같은 색이라 변화가 안 읽힌다). 한 단계 내려야 대비가 생긴다. */
+@keyframes cloudpulse{0%,100%{opacity:1;}50%{opacity:.35;}}
 
 /* ---------- 결과 배경: 강도에 맞춘 비 ---------- */
 /* 시안 지정 루프 — 약한 비 1.9s / 보통 1.15s / 폭우 0.62s. 그 사이는 보간했다. */
@@ -202,36 +202,34 @@ div[data-testid="stTextInput"] input::placeholder{color:var(--muted);font-weight
 .block-container{position:relative;z-index:1;}
 /* ★ 시안 요구: 모션 민감 사용자에게는 애니메이션을 멈춘다 */
 @media (prefers-reduced-motion: reduce){
-  .rainbg i,.loadwrap.searching svg{animation:none;}
+  .rainbg i,.loadwrap svg{animation:none;}
 }
 </style>
 """
 
 
-def cloud_loader(frac, label, searching=False):
-    """구름 실루엣이 아래에서 흰색으로 차오르는 로딩 표시.
+def cloud_loader(label):
+    """구름이 숨쉬는 로딩 표시 (1.9초 주기).
+
+    ★ 진행률 채움은 뺐다(사용자 결정). 수집 속도가 기상청 서버 사정에 좌우돼
+      칸이 뚝뚝 끊기고 한 칸에서 몇 분씩 멈추면 고장난 것처럼 보였다.
+      일정하게 숨쉬면 느린 날에도 '앱은 살아있다'가 전달된다.
+      진행 상황은 아래 문구(`n/12`)로만 알린다 — 눈금이 아니라 글자라 오해가 없다.
 
     ★ clipPath 는 자식 도형들의 **합집합**으로 자른다 — 타이틀 일러스트와 똑같은
-      원 2개 + 둥근 사각 1개를 그대로 재사용해 모양을 맞췄다.
-      구름 바깥은 아예 칠하지 않아 투명이다(페이지 배경이 그대로 비친다).
-
-    색: 빈 곳 #dbe9f6 / 채움 #ffffff (사용자 선택).
-    ★ 둘 다 밝아서 25% 부근까지는 차오르는 게 잘 안 보인다 — 알고 고른 값이다.
-      대비를 올리려면 채움을 #12324d(잉크)로 바꾸거나 네이비 테두리를 두르면 된다.
+      원 2개 + 둥근 사각 1개를 재사용해 모양을 맞췄다. 구름 바깥은 칠하지 않아
+      투명이고 페이지 배경이 그대로 비친다.
     """
-    frac = max(0.0, min(1.0, frac))
-    y = 56 - 44 * frac                       # 구름 아랫변 56 -> 윗변 12
     return f"""
-<div class="loadwrap{' searching' if searching else ''}">
+<div class="loadwrap">
   <svg viewBox="0 0 96 66" xmlns="http://www.w3.org/2000/svg" role="img"
-       aria-label="자료 받는 중 {int(frac*100)}퍼센트">
+       aria-label="위성 자료 받는 중">
     <defs><clipPath id="cloudclip">
       <circle cx="33" cy="30" r="13"/><circle cx="52" cy="27" r="15"/>
       <rect x="14" y="33" width="55" height="17" rx="8.5"/>
     </clipPath></defs>
     <g clip-path="url(#cloudclip)">
-      <rect x="0" y="0" width="96" height="66" fill="#dbe9f6"/>
-      <rect x="0" y="{y:.1f}" width="96" height="{66 - y:.1f}" fill="#ffffff"/>
+      <rect x="0" y="0" width="96" height="66" fill="#c9dcee"/>
     </g>
   </svg>
   <p class="loadlab">{label}</p>
@@ -371,12 +369,10 @@ def result():
         return
 
     slot = st.empty()
-    # 탐색 구간 — 아직 받은 게 없어 0%. 깜빡임으로만 진행 중임을 알린다.
-    slot.markdown(cloud_loader(0.0, "위성 자료 수집 중", searching=True),
-                  unsafe_allow_html=True)
+    slot.markdown(cloud_loader("위성 자료 수집 중"), unsafe_allow_html=True)
 
     def prog(n, tot, lab):
-        slot.markdown(cloud_loader(n / tot, f"GK2A {n}/{tot} · {lab}"),
+        slot.markdown(cloud_loader(f"GK2A {n}/{tot} · {lab}"),
                       unsafe_allow_html=True)
 
     try:
@@ -411,7 +407,7 @@ def result():
 <div class="meta"><span>30분 뒤 · {r['valid_at']:%H:%M} KST</span><span>LV.{r['lv']}</span></div>
 <div class="bignum">{L['range_text']}{unit}</div>
 <p class="headline">{L['headline']}</p>
-<p class="subcopy">{L['sub']}</p>
+<p class="subcopy">{_subcopy(r)}</p>
 <div class="gauge">{cells}<span class="lab">{r['lv']}단계</span></div>
 """, unsafe_allow_html=True)
 
@@ -421,6 +417,18 @@ def result():
 [ 인증키 미설정 — 이 값은 실제 예측이 아닙니다 ]<br>
 더미 P(&ge;0.1/1/3/10) = {p[0.1]:.3f} / {p[1.0]:.3f} / {p[3.0]:.3f} / {p[10.0]:.3f}
 </div>""", unsafe_allow_html=True)
+
+
+def _subcopy(r):
+    """서브텍스트. 0단계인데 이웃 칸에 비가 있으면 문장을 갈아끼운다.
+
+    ★ 예측값은 건드리지 않는다 — 바꾸는 건 **문장이 단정하는 범위**뿐이다.
+      지도와 지점 값은 같은 격자를 본다(무작위 3천 지점 99.70% 일치). 어긋나
+      보이는 건 4km 칸 경계에 지점이 걸렸기 때문이다.
+    """
+    if r["lv"] == 0 and r.get("near_lv", 0) >= 1:
+        return SUB_NEAR_RAIN
+    return LEVELS[r["lv"]]["sub"]
 
 
 def _map(lat, lon, name, r):

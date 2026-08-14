@@ -125,9 +125,15 @@ def predict(lat, lon, progress=None):
         return None
     i, j = px
     probs = {b: float(g["probs"][b][i, j]) for b in BINS}
+    # ★ 이웃 칸의 최고 단계. 화면이 스스로 모순돼 보이는 걸 막는 용도다 —
+    #   격자가 4km 라 마커가 칸 경계에 걸리면 "주변은 온통 파란데 여기만 0" 이 되고
+    #   사용자 눈에는 오류로 보인다. 예측값은 건드리지 않고 안내 문구만 덧붙인다.
+    h, w = g["cat"].shape
+    near = int(g["cat"][max(i - 1, 0):min(i + 2, h),
+                        max(j - 1, 0):min(j + 2, w)].max())
     return dict(lv=categorize(probs, P.thrs), probs=probs, thresholds=P.thrs,
                 valid_at=g["valid_at"], base_at=g["base_at"], lag_min=g["lag_min"],
-                lead_min=g["lead_min"], grid=g, live=True)
+                lead_min=g["lead_min"], near_lv=near, grid=g, live=True)
 
 
 # --------------------------------------------------------------------- 더미
@@ -144,7 +150,8 @@ def predict_stub(lat, lon, now=None):
         probs[b] = p
         prev = p
     valid = base + dt.timedelta(minutes=30)
-    return dict(lv=categorize(probs, thr), probs=probs, thresholds=thr,
+    lv = categorize(probs, thr)
+    return dict(lv=lv, probs=probs, thresholds=thr, near_lv=lv,
                 valid_at=valid, base_at=base, lag_min=None, grid=None, live=False,
                 lead_min=(valid - dt.datetime.now(KST)).total_seconds() / 60.0)
 
